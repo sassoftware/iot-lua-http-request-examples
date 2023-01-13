@@ -6,6 +6,19 @@ This project will show how to use the sendHttp build-in function to query sensor
 
 [toc]
 
+* [Lua HTTP Request Examples](#lua-http-request-examples)
+      * [Table of Contents](#table-of-contents)
+      * [Overview](#overview)
+      * [Formatting a Request](#formatting-a-request)
+      * [Simple Example](#simple-example)
+      * [Bearer Token example](#bearer-token-example)
+      * [SOAP Example](#soap-example)
+      * [Summary](#summary)
+      * [Contributing](#contributing)
+      * [License](#license)
+      * [Additional Resources](#additional-resources)
+      
+
 ## Overview 
 
 ![image-20220822152746080](Images/image-20220822152746080.png)
