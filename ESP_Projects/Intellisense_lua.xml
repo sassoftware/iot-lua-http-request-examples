@@ -1,0 +1,170 @@
+<project name="Intellisense_lua" pubsub="none" threads="4" heartbeat-interval="1">
+  <description><![CDATA[Grab data from ToC Intellisense sensors]]></description>
+  <metadata>
+    <meta id="studioUploadedBy">totuni</meta>
+    <meta id="studioUploaded">1655753565556</meta>
+    <meta id="studioModifiedBy">totuni</meta>
+    <meta id="studioModified">1664564362675</meta>
+    <meta id="streamingAnalytics_softwareVersion">4.0</meta>
+    <meta id="streamingAnalytics_schemaId">d1533f478fa091488a9ea082856c0cc8</meta>
+    <meta id="streamingAnalytics_projectName">raw</meta>
+    <meta id="streamingAnalytics_projectXmlList"/>
+    <meta id="streamingAnalytics_historyInterval">900</meta>
+    <meta id="streamingAnalytics_outputInterval">900</meta>
+    <meta id="streamingAnalytics_scoreOutputRecords">false</meta>
+    <meta id="streamingAnalytics_inputOptions"/>
+    <meta id="streamingAnalytics_outputOptions"/>
+    <meta id="streamingAnalytics_outputfile1">/mnt/viya-share/esp/Common/streamingAnalytics/warehouse/rdy/@MYUSERID@/extract/raw/rawpoints_YYYY_MM_DD_HH_MM_SS_XXXXXX</meta>
+    <meta id="layout">{"cq1":{"Heartbeat":{"x":-105,"y":-245},"ReadfromIntellisense":{"x":-105,"y":-95},"copy_raw_to_csv":{"x":330,"y":540},"source_C01_kfka_eventloop":{"x":50,"y":665},"source_C01_kfka_filter":{"x":50,"y":790},"source_C01_kfka_read":{"x":50,"y":1035},"source_C01_kfka_union":{"x":50,"y":540},"source_C01_kfka_update":{"x":50,"y":910},"union_data_sources":{"x":190,"y":420}}}</meta>
+  </metadata>
+  <contqueries>
+    <contquery name="cq1" index="pi_EMPTY" trace="ReadfromIntellisense">
+      <windows>
+        <window-source index="pi_EMPTY" insert-only="true" autogen-key="true" name="Heartbeat">
+          <schema>
+            <fields>
+              <field name="id" type="int64" key="true"/>
+              <field name="time" type="stamp"/>
+              <field name="label" type="string"/>
+            </fields>
+          </schema>
+        </window-source>
+        <window-lua events="create" heartbeat="hb" name="ReadfromIntellisense">
+          <schema>
+            <fields>
+              <field name="id" type="string" key="true"/>
+              <field name="deviceid" type="string"/>
+              <field name="measurement" type="string"/>
+              <field name="value" type="double"/>
+              <field name="timestamp" type="date"/>
+            </fields>
+          </schema>
+          <copy/>
+          <code><![CDATA[
+ 
+            local   url_fields = "/values/timeseries?keys=depth1,airTemp,baro,dropSDI,battery,lat,lon,mode,h2oTemp,rssi,IMEI,pict,pCommand,soilTempSDI"
+            local   url_base = "https://flashflood.info:8080/api/plugins/telemetry/DEVICE/"
+            local   url_auth = "https://flashflood.info:8080/api/auth/login"
+            
+            local   connect_timeout = 3000
+            local   data_timeout = 5000
+            
+            local   deviceids = {
+                 
+                 "cf314ed0-6182-11eb-b685-bd5875bd4624",
+                 "364f8740-617d-11eb-b685-bd5875bd4624"
+             }
+
+            function getToken(context,url_auth)
+
+                local   request = {}
+                local   headers = {}
+
+                request["url"] = url_auth
+                request["method"] = "POST"
+                request["connect-timeout"] = connect_timeout
+                request["data-timeout"] = data_timeout
+                headers["Content-Type"] = "application/json"
+                request["body"] = "{\"username\": \"yourID@acme.com\", \"password\": \"Orion123\"}"
+                request["headers"] = headers
+                request["tolua"] = true
+                
+                local  response = sendHttp(request)
+                local  status = response.status
+                
+                if status == 200 then return response.response.token
+                else
+                    logMessage(context.window,"Auth token retrieval failed with status code  "..tostring(status),"info",debug.getinfo(1).currentline)
+                    return false
+                end     
+                
+
+            end
+
+            --local   token = getToken()          -- Auth token
+            --print ("Start of auth token ")
+            --print (tostring(token))
+            --print ("End  of auth token ")
+            
+            local   eventTime = os.time()       -- Time of last event generation
+            local   tokenInterval = 60          -- Get new token every minute
+            local   eventInterval =  5          -- Generate events every 30 seconds
+            local   tokenTime = os.time() - (tokenInterval * 5 )  -- Time of last token retrieval
+
+            function hb(context)
+                local   events = nil
+                local   current = os.time()
+
+                if (current - tokenTime >= tokenInterval)
+                then
+                    token = getToken(context,url_auth)
+                    if token then tokenTime = os.time()
+                    else tokenTime = 0  -- token not acquired :(  
+                    end     
+                end
+
+                if (current - eventTime >= eventInterval and token )
+                then
+                    print("Generating events")
+                    local   guid = getGuids()[1]
+                    local   counter = 1
+
+                    events = {}
+
+                    for _,v1 in ipairs(deviceids)
+                    do
+                        local   data = getResultsByDevice(v1)
+
+                        for key,v2 in pairs(data.response)
+                        do
+                            local   e = {}
+                            local   o = v2[1]
+                            e.id = guid..":"..tostring(counter)
+                            e.deviceid = v1
+                            e.measurement = key
+                            e.value = o.value
+                            e.timestamp = o.ts
+                            events[counter] = e
+                            counter = counter + 1
+                        end
+                    end
+
+                    eventTime = os.time()
+                    --print("Done generating "..tostring(counter).." events")
+                end
+
+                return events
+            end
+
+            function getResultsByDevice(id)
+                local   url = url_base..id..url_fields
+                local   request = {}
+                local   headers = {}
+                request["url"] = url
+                headers["Content-Type"] = "application/json"
+                headers["X-Authorization"] = "Bearer "..token
+                request["headers"] = headers
+                request["connect-timeout"] = connect_timeout
+                request["data-timeout"] = data_timeout
+                request["tolua"] = true
+                --print(toString(request))
+
+                local   response = sendHttp(request)
+                --print(toString(response))
+
+                return response
+            end
+
+            function create(data,context)
+                return nil
+            end
+
+          ]]></code>
+        </window-lua>
+      </windows>
+      <edges>
+        <edge source="Heartbeat" target="ReadfromIntellisense"/>
+      </edges>
+    </contquery>
+  </contqueries>
+</project>

@@ -1,0 +1,138 @@
+<project name="weather_lua" pubsub="none" threads="4" heartbeat-interval="1">
+  <description><![CDATA[Example of how to http call and parse weather data using Lua.]]></description>
+  <metadata>
+    <meta id="studioUploadedBy">totuni</meta>
+    <meta id="studioUploaded">1663076361008</meta>
+    <meta id="studioModifiedBy">totuni</meta>
+    <meta id="studioModified">1664558054587</meta>
+    <meta id="streamingAnalytics_softwareVersion">4.0</meta>
+    <meta id="streamingAnalytics_schemaId">d1533f478fa091488a9ea082856c0cc8</meta>
+    <meta id="streamingAnalytics_projectName">raw</meta>
+    <meta id="streamingAnalytics_projectXmlList"/>
+    <meta id="streamingAnalytics_historyInterval">900</meta>
+    <meta id="streamingAnalytics_outputInterval">900</meta>
+    <meta id="streamingAnalytics_scoreOutputRecords">false</meta>
+    <meta id="streamingAnalytics_inputOptions"/>
+    <meta id="streamingAnalytics_outputOptions"/>
+    <meta id="streamingAnalytics_outputfile1">/mnt/viya-share/esp/Common/streamingAnalytics/warehouse/rdy/@MYUSERID@/extract/raw/rawpoints_YYYY_MM_DD_HH_MM_SS_XXXXXX</meta>
+    <meta id="layout">{"cq1":{"GetWeather":{"x":-195,"y":-375},"Heartbeat":{"x":-195,"y":-535},"copy_raw_to_csv":{"x":330,"y":540},"source_C01_kfka_eventloop":{"x":50,"y":665},"source_C01_kfka_filter":{"x":50,"y":790},"source_C01_kfka_read":{"x":50,"y":1035},"source_C01_kfka_union":{"x":50,"y":540},"source_C01_kfka_update":{"x":50,"y":910},"union_data_sources":{"x":190,"y":420}}}</meta>
+    <meta id="studioTags">jsonparse, weather, http, lua</meta>
+  </metadata>
+  <contqueries>
+    <contquery name="cq1" index="pi_EMPTY" trace="GetWeather">
+      <windows>
+        <window-source index="pi_EMPTY" insert-only="true" autogen-key="true" name="Heartbeat">
+          <schema>
+            <fields>
+              <field name="id" type="int64" key="true"/>
+              <field name="time" type="stamp"/>
+              <field name="label" type="string"/>
+            </fields>
+          </schema>
+        </window-source>
+        <window-lua events="create" heartbeat="hb" name="GetWeather">
+          <schema>
+            <fields>
+              <field name="id" type="string" key="true"/>
+              <field name="deviceid" type="string"/>
+              <field name="timestamp" type="date"/>
+              <field name="wind_speed" type="string"/>
+              <field name="temperature" type="string"/>
+              <field name="humidity" type="string"/>
+              <field name="pressure" type="string"/>
+              <field name="rain" type="string"/>
+            </fields>
+          </schema>
+          <copy/>
+          <code><![CDATA[
+ 
+            local   url_fields = "weather?lat=35.81782100&lon=-78.75136100&appid=2e7e11f436ad63a182ec8d44ba247a62&units=imperial"
+            local   url_base = "http://api.openweathermap.org/data/2.5/"
+            local  url = url_base..url_fields
+            
+            
+            local   connect_timeout = 3000
+            local   data_timeout = 5000
+            
+            
+            function getResults(context,url)
+
+                local   request = {}
+                local   headers = {}
+
+                request["url"] = url
+                request["method"] = "GET"
+                request["connect-timeout"] = connect_timeout
+                request["data-timeout"] = data_timeout
+                headers["Content-Type"] = "application/json"
+                request["headers"] = headers
+                request["tolua"] = true  -- convert json returned to lua table 
+                
+                local  response = sendHttp(request)
+                local  status = response.status
+                
+                if status == 200 then return response.response
+                else
+                    logMessage(context.window,"HTTP request failed with status code  "..tostring(status),"info",debug.getinfo(1).currentline)
+                    return false
+                end     
+                
+
+            end  --getResults
+
+           
+            local   eventTime = os.time()       -- Time of last event generation
+            local   tokenInterval = 60          -- Get new token every minute
+            local   eventInterval =  5          -- Generate events every 30 seconds
+            local   tokenTime = os.time() - (tokenInterval * 5 )  -- Time of last token retrieval
+
+            function hb(context)
+                
+                local current = os.time()
+                
+
+                if (current - eventTime >= eventInterval )
+                then
+                    local events = {}      
+                    local   guid = getGuids()[1]  -- base key for events 
+                    local   counter = 1
+
+                    local   data = getResults(context,url)
+                    
+                    if data then -- results are available 
+                       print("Generating event")    
+                       local e = {}   -- create new event 
+                       e.id = guid..":"..tostring(counter)
+                       e.deviceid = "weather"
+                       e.timestamp = os.time()
+                       e.wind_speed = tostring(data.wind.speed)
+                       e.temperature = tostring(data.main.temp)
+                       e.humidity = tostring(data.main.humidity)
+                       e.pressure = tostring(data.main.pressure)
+                       e.rain = tostring(data.rain["1h"])
+                       events[counter] = e 
+                       eventTime = os.time()
+                    else   events = nil 
+                    end     
+                    
+                return (events)    
+                end
+
+                
+            end
+
+            
+
+            function create(data,context)
+                return nil
+            end
+
+          ]]></code>
+        </window-lua>
+      </windows>
+      <edges>
+        <edge source="Heartbeat" target="GetWeather"/>
+      </edges>
+    </contquery>
+  </contqueries>
+</project>

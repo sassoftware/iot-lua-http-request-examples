@@ -1,0 +1,127 @@
+<project name="SOAP_LUA_NUMBERTOWORDS" pubsub="none" threads="4" heartbeat-interval="1">
+  <description><![CDATA[Example of how to http call and parse data using Lua.]]></description>
+  <metadata>
+    <meta id="studioUploadedBy">sspkuk</meta>
+    <meta id="studioUploaded">1664871557087</meta>
+    <meta id="studioModifiedBy">sspkuk</meta>
+    <meta id="studioModified">1664877131613</meta>
+    <meta id="streamingAnalytics_softwareVersion">4.0</meta>
+    <meta id="streamingAnalytics_schemaId">d1533f478fa091488a9ea082856c0cc8</meta>
+    <meta id="streamingAnalytics_projectName">raw</meta>
+    <meta id="streamingAnalytics_projectXmlList"/>
+    <meta id="streamingAnalytics_historyInterval">900</meta>
+    <meta id="streamingAnalytics_outputInterval">900</meta>
+    <meta id="streamingAnalytics_scoreOutputRecords">false</meta>
+    <meta id="streamingAnalytics_inputOptions"/>
+    <meta id="streamingAnalytics_outputOptions"/>
+    <meta id="streamingAnalytics_outputfile1">/mnt/viya-share/esp/Common/streamingAnalytics/warehouse/rdy/@MYUSERID@/extract/raw/rawpoints_YYYY_MM_DD_HH_MM_SS_XXXXXX</meta>
+    <meta id="layout">{"NumberToWords":{"Heartbeat":{"x":-195,"y":-535},"NumberToWords":{"x":-195,"y":-375},"copy_raw_to_csv":{"x":330,"y":540},"source_C01_kfka_eventloop":{"x":50,"y":665},"source_C01_kfka_filter":{"x":50,"y":790},"source_C01_kfka_read":{"x":50,"y":1035},"source_C01_kfka_union":{"x":50,"y":540},"source_C01_kfka_update":{"x":50,"y":910},"union_data_sources":{"x":190,"y":420}},"cq1":{"Heartbeat":{"x":50,"y":50},"NumberToWords":{"x":50,"y":175}}}</meta>
+  </metadata>
+  <contqueries>
+    <contquery name="cq1" index="pi_EMPTY" trace="NumberToWords">
+      <windows>
+        <window-source index="pi_EMPTY" insert-only="true" autogen-key="true" name="Heartbeat">
+          <schema>
+            <fields>
+              <field name="id" type="int64" key="true"/>
+              <field name="time" type="stamp"/>
+              <field name="label" type="string"/>
+            </fields>
+          </schema>
+        </window-source>
+        <window-lua events="create" heartbeat="hb" name="NumberToWords">
+          <description><![CDATA[Returns the word corresponding to the positive number passed as parameter. Limited to quadrillions.]]></description>
+          <schema>
+            <fields>
+              <field name="id" type="string" key="true"/>
+              <field name="deviceid" type="string"/>
+              <field name="timestamp" type="date"/>
+              <field name="resultName" type="string"/>
+            </fields>
+          </schema>
+          <copy/>
+          <code><![CDATA[            local  url = "https://www.dataaccess.com/webservicesserver/NumberConversion.wso"
+            
+            
+            local   connect_timeout = 3000
+            local   data_timeout = 5000
+            
+            
+            function getResults(context,url)
+
+                local   request = {}
+                local   headers = {}
+                math.randomseed(os.time())
+                local   num = math.random(1,100)
+
+                request["url"] = url
+                request["method"] = "POST"
+                request["connect-timeout"] = connect_timeout
+                request["data-timeout"] = data_timeout
+                headers["Content-Type"] = "text/xml; charset=utf-8"
+                request["headers"] = headers
+                request["body"]="<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><NumberToWords xmlns=\"http://www.dataaccess.com/webservicesserver/\"><ubiNum>".. num.."</ubiNum></NumberToWords></soap:Body></soap:Envelope>"
+                request["tolua"] = true  -- convert json returned to lua table 
+                
+                local  response = sendHttp(request)
+                local  status = response.status
+                
+                if status == 200 then return response.response
+                else
+                    logMessage(context.window,"HTTP request failed with status code  "..tostring(status),"info",debug.getinfo(1).currentline)
+                    return false
+                end     
+                
+
+            end  --getResults
+
+           
+            local   eventTime = os.time()       -- Time of last event generation
+            local   eventInterval =  5          -- Generate events every 30 seconds
+           
+            function hb(context)
+                
+                local current = os.time()
+                
+
+                if (current - eventTime >= eventInterval )
+                then
+                    local events = {}      
+                    local   guid = getGuids()[1]  -- base key for events 
+                    local   counter = 1
+
+                    local   data = getResults(context,url)
+                    
+                    if data then -- results are available 
+                       print("Generating event")    
+                       local e = {}   -- create new event 
+                       e.id = guid..":"..tostring(counter)
+                       e.deviceid = "TestServer"
+                       e.timestamp = os.time()
+                       e.resultName = tostring(data.Envelope.Body.NumberToWordsResponse.NumberToWordsResult)
+                       events[counter] = e 
+                       eventTime = os.time()
+                    else   events = nil 
+                    end     
+                    
+                return (events)    
+                end
+
+                
+            end
+
+            
+
+            function create(data,context)
+                return nil
+            end
+
+          ]]></code>
+        </window-lua>
+      </windows>
+      <edges>
+        <edge source="Heartbeat" target="NumberToWords"/>
+      </edges>
+    </contquery>
+  </contqueries>
+</project>
